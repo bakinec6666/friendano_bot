@@ -23,11 +23,9 @@ def stop_chat(message):
 
 @bot.message_handler(func=lambda m: m.text == "⭐ VIP almaq")
 def vip_info(message):
-    bot.send_message(message.chat.id, "VIP funksiyalar: 
+    bot.send_message(message.chat.id, """VIP funksiyalar:
 🔍 Cinsə görə axtarış
 📸 Media göndərmək
 🔞 18+ rejim
-
-VIP almaq üçün adminə yazın: @admin")
-
+VIP almaq üçün adminə yazın: @admin""")
 bot.polling()
