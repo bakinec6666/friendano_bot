@@ -7,6 +7,16 @@ bot = telebot.TeleBot(TOKEN)
 users = {}
 chats = {}
 
+# 👑 Admin user ID
+ADMINS = [6671597409]
+
+@bot.message_handler(commands=['admin'])
+def admin_panel(message):
+    if message.from_user.id in ADMINS:
+        bot.send_message(message.chat.id, "👑 Siz adminsiniz. VIP funksiyalar aktivdir.")
+    else:
+        bot.send_message(message.chat.id, "⛔ Bu funksiya yalnız adminlər üçündür.")
+
 @bot.message_handler(commands=["start"])
 def start(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
