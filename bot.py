@@ -19,7 +19,7 @@ queue_gay = []
 def main_menu():
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("👥 Rəqəmsiz axtarış", "⚤ Cinsə görə axtarış", "🌈 Gey axtarış")
-    markup.add("❌ Dayandır", "⭐ VIP almaq")
+    markup.add("❌ Dayandır", "🔙 Geri", "⭐ VIP almaq")
     return markup
 
 def is_vip(user_id):
@@ -51,7 +51,7 @@ def find_partner(user_id, search_type):
             if search_type == "gender":
                 other_sex = users[other_id].get("sex")
                 if other_sex == user_sex:
-                    continue  # только противоположный пол
+                    continue
             users[user_id]["partner"] = other_id
             users[other_id]["partner"] = user_id
             queue.remove(other_id)
@@ -167,7 +167,7 @@ def broadcast(message):
             continue
     bot.send_message(message.chat.id, f"✅ Mesaj göndərildi: {count} nəfərə")
 
-@bot.message_handler(func=lambda m: True)
+@bot.message_handler(func=lambda m: True, content_types=['text'])
 def chat_handler(message):
     user_id = message.from_user.id
     text = message.text.strip()
@@ -213,6 +213,10 @@ def chat_handler(message):
         stop_chat(user_id)
         bot.send_message(user_id, "🔴 Chat dayandırıldı.", reply_markup=main_menu())
 
+    elif text == "🔙 Geri":
+        stop_chat(user_id)
+        bot.send_message(user_id, "↩️ Əsas menyuya qayıtdınız.", reply_markup=main_menu())
+
     elif text == "⭐ VIP almaq":
         bot.send_message(user_id, "VIP almaq üçün əlaqə saxlayın: @user666321")
 
@@ -243,25 +247,49 @@ def set_sex(message):
     else:
         bot.send_message(user_id, "⏳ Tərəfdaş axtarılır...")
 
-# Webhook endpoint for Telegram
+@bot.message_handler(content_types=['photo'])
+def handle_photo(message):
+    user_id = message.from_user.id
+    partner_id = users.get(user_id, {}).get("partner")
+    if partner_id:
+        bot.send_photo(partner_id, message.photo[-1].file_id, caption=message.caption)
+
+@bot.message_handler(content_types=['video'])
+def handle_video(message):
+    user_id = message.from_user.id
+    partner_id = users.get(user_id, {}).get("partner")
+    if partner_id:
+        bot.send_video(partner_id, message.video.file_id, caption=message.caption)
+
+@bot.message_handler(content_types=['voice'])
+def handle_voice(message):
+    user_id = message.from_user.id
+    partner_id = users.get(user_id, {}).get("partner")
+    if partner_id:
+        bot.send_voice(partner_id, message.voice.file_id)
+
+@bot.message_handler(content_types=['sticker'])
+def handle_sticker(message):
+    user_id = message.from_user.id
+    partner_id = users.get(user_id, {}).get("partner")
+    if partner_id:
+        bot.send_sticker(partner_id, message.sticker.file_id)
+
 @server.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
     bot.process_new_updates([update])
     return "OK", 200
 
-# Index for Render
 @server.route("/")
 def index():
     return "Bot işləyir!", 200
 
-# Webhook setup
 bot.remove_webhook()
 WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_URL")
 if WEBHOOK_URL:
     bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
 
-# Run Flask server
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     server.run(host="0.0.0.0", port=port)
