@@ -2,6 +2,7 @@ import telebot
 from flask import Flask, request
 import os
 import logging
+import json
 
 TOKEN = "7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc"
 ADMINS = [6671597409]
@@ -16,10 +17,36 @@ queue_random = []
 queue_gender = []
 queue_gay = []
 
-def main_menu():
+# Словарь для статистики сообщений и уровней
+try:
+    with open('user_activity.json', 'r') as f:
+        user_activity = json.load(f)
+except FileNotFoundError:
+    user_activity = {}
+
+def save_user_activity():
+    with open('user_activity.json', 'w') as f:
+        json.dump(user_activity, f)
+
+def check_level_up(user_id):
+    user_id_str = str(user_id)
+    data = user_activity.get(user_id_str, {"messages": 0, "level": 0})
+    data["messages"] += 1
+    new_level = data["messages"] // 10  # Каждые 10 сообщений — уровень выше
+    if new_level > data["level"]:
+        data["level"] = new_level
+        bot.send_message(user_id, f"🎉 Təbriklər! Sizin yeni səviyyəniz: {new_level}")
+    user_activity[user_id_str] = data
+    save_user_activity()
+
+def main_menu(lang="az"):
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("👥 Rəqəmsiz axtarış", "⚤ Cinsə görə axtarış", "🌈 Gey axtarış")
-    markup.add("❌ Dayandır", "🔙 Geri", "⭐ VIP almaq")
+    if lang == "az":
+        markup.add("👥 Rəqəmsiz axtarış", "⚤ Cinsə görə axtarış", "🌈 Gey axtarış")
+        markup.add("❌ Dayandır", "🔙 Geri", "⭐ VIP almaq")
+    else:  # ru
+        markup.add("👥 Рандомный поиск", "⚤ Поиск по полу", "🌈 Гей поиск")
+        markup.add("❌ Стоп", "🔙 Назад", "⭐ Купить VIP")
     return markup
 
 def is_vip(user_id):
@@ -61,23 +88,40 @@ def find_partner(user_id, search_type):
         queue.append(user_id)
     return None
 
-def sex_selection_markup():
+def sex_selection_markup(lang="az"):
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    markup.add("Kişi", "Qadın")
+    if lang == "az":
+        markup.add("Kişi", "Qadın")
+    else:
+        markup.add("Мужчина", "Женщина")
     return markup
+
+def detect_language_from_country(country_code):
+    # Пример: AZ -> азербайджанский, RU -> русский
+    if country_code == "RU":
+        return "ru"
+    return "az"
 
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.from_user.id
+    # Сохраняем язык пользователя для меню
+    # Попробуем получить country_code из Telegram (есть в message.from_user.language_code)
+    # Но это не всегда точно, поэтому можно через IP или отдельный сервис
+    lang = "az"
+    if message.from_user.language_code:
+        if message.from_user.language_code.startswith("ru"):
+            lang = "ru"
     users[user_id] = {
         "sex": None,
         "interest": None,
         "partner": None,
         "name": message.from_user.first_name,
-        "username": message.from_user.username
+        "username": message.from_user.username,
+        "lang": lang
     }
 
-    welcome = (
+    welcome_az = (
         f"👋 Salam, {message.from_user.first_name}!\n\n"
         "Bu bot **anonimdir**. Heç kim sizin profil və məlumatlarınızı görmür.\n\n"
         "💬 Axtarış növləri:\n"
@@ -86,7 +130,29 @@ def start(message):
         "🌈 Gey — açıq\n\n"
         "Başlamaq üçün menyudan seçim edin."
     )
-    bot.send_message(user_id, welcome, reply_markup=main_menu(), parse_mode="Markdown")
+    welcome_ru = (
+        f"👋 Привет, {message.from_user.first_name}!\n\n"
+        "Этот бот **анонимен**. Никто не видит ваш профиль и данные.\n\n"
+        "💬 Типы поиска:\n"
+        "👥 Рандомный — со всеми\n"
+        "⚤ Поиск по полу — для VIP\n"
+        "🌈 Гей — открытый\n\n"
+        "Выберите в меню, чтобы начать."
+    )
+
+    welcome = welcome_ru if lang == "ru" else welcome_az
+    bot.send_message(user_id, welcome, reply_markup=main_menu(lang), parse_mode="Markdown")
+
+@bot.message_handler(commands=['stats'])
+def stats(message):
+    user_id = message.from_user.id
+    data = user_activity.get(str(user_id), {"messages": 0, "level": 0})
+    lang = users.get(user_id, {}).get("lang", "az")
+    if lang == "ru":
+        text = f"📊 Ваши статистики:\nСообщений отправлено: {data['messages']}\nУровень: {data['level']}"
+    else:
+        text = f"📊 Statistikalarınız:\nGöndərilən mesajlar: {data['messages']}\nSəviyyə: {data['level']}"
+    bot.send_message(user_id, text)
 
 @bot.message_handler(commands=['ahelp'])
 def ahelp(message):
@@ -174,51 +240,57 @@ def chat_handler(message):
 
     if user_id not in users:
         users[user_id] = {"sex": None, "interest": None, "partner": None,
-                          "name": message.from_user.first_name, "username": message.from_user.username}
+                          "name": message.from_user.first_name, "username": message.from_user.username, "lang": "az"}
 
-    if text == "👥 Rəqəmsiz axtarış":
+    # Обновляем статистику и проверяем уровень
+    check_level_up(user_id)
+
+    lang = users[user_id].get("lang", "az")
+
+    if (lang == "az" and text == "👥 Rəqəmsiz axtarış") or (lang == "ru" and text == "👥 Рандомный поиск"):
         stop_chat(user_id)
         p = find_partner(user_id, "random")
         if p:
-            bot.send_message(user_id, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!")
-            bot.send_message(p, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!")
+            bot.send_message(user_id, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!" if lang=="az" else "🟢 Партнер найден. Можете писать!")
+            bot.send_message(p, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!" if lang=="az" else "🟢 Партнер найден. Можете писать!")
         else:
-            bot.send_message(user_id, "⏳ Tərəfdaş axtarılır...")
+            bot.send_message(user_id, "⏳ Tərəfdaş axtarılır..." if lang=="az" else "⏳ Партнер ищется...")
 
-    elif text == "⚤ Cinsə görə axtarış":
+    elif (lang == "az" and text == "⚤ Cinsə görə axtarış") or (lang == "ru" and text == "⚤ Поиск по полу"):
         if not is_vip(user_id):
-            return bot.send_message(user_id, "⚠️ Bu funksiya yalnız VIP üçün.\nƏlaqə: @user666321")
+            bot.send_message(user_id, "⚠️ Bu funksiya yalnız VIP üçün.\nƏlaqə: @user666321" if lang=="az" else "⚠️ Эта функция только для VIP.\nСвязь: @user666321")
+            return
         if not users[user_id]["sex"]:
-            msg = bot.send_message(user_id, "Cinsinizi seçin:", reply_markup=sex_selection_markup())
+            msg = bot.send_message(user_id, "Cinsinizi seçin:" if lang=="az" else "Выберите пол:", reply_markup=sex_selection_markup(lang))
             bot.register_next_step_handler(msg, set_sex)
             return
         stop_chat(user_id)
         p = find_partner(user_id, "gender")
         if p:
-            bot.send_message(user_id, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!")
-            bot.send_message(p, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!")
+            bot.send_message(user_id, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!" if lang=="az" else "🟢 Партнер найден. Можете писать!")
+            bot.send_message(p, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!" if lang=="az" else "🟢 Партнер найден. Можете писать!")
         else:
-            bot.send_message(user_id, "⏳ Tərəfdaş axtarılır...")
+            bot.send_message(user_id, "⏳ Tərəfdaş axtarılır..." if lang=="az" else "⏳ Партнер ищется...")
 
-    elif text == "🌈 Gey axtarış":
+    elif (lang == "az" and text == "🌈 Gey axtarış") or (lang == "ru" and text == "🌈 Гей поиск"):
         stop_chat(user_id)
         p = find_partner(user_id, "gay")
         if p:
-            bot.send_message(user_id, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!")
-            bot.send_message(p, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!")
+            bot.send_message(user_id, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!" if lang=="az" else "🟢 Партнер найден. Можете писать!")
+            bot.send_message(p, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!" if lang=="az" else "🟢 Партнер найден. Можете писать!")
         else:
-            bot.send_message(user_id, "⏳ Tərəfdaş axtarılır...")
+            bot.send_message(user_id, "⏳ Tərəfdaş axtarılır..." if lang=="az" else "⏳ Партнер ищется...")
 
-    elif text == "❌ Dayandır":
+    elif (lang == "az" and text == "❌ Dayandır") or (lang == "ru" and text == "❌ Стоп"):
         stop_chat(user_id)
-        bot.send_message(user_id, "🔴 Chat dayandırıldı.", reply_markup=main_menu())
+        bot.send_message(user_id, "🔴 Chat dayandırıldı." if lang=="az" else "🔴 Чат остановлен.", reply_markup=main_menu(lang))
 
-    elif text == "🔙 Geri":
+    elif (lang == "az" and text == "🔙 Geri") or (lang == "ru" and text == "🔙 Назад"):
         stop_chat(user_id)
-        bot.send_message(user_id, "↩️ Əsas menyuya qayıtdınız.", reply_markup=main_menu())
+        bot.send_message(user_id, "↩️ Əsas menyuya qayıtdınız." if lang=="az" else "↩️ Вы вернулись в главное меню.", reply_markup=main_menu(lang))
 
-    elif text == "⭐ VIP almaq":
-        bot.send_message(user_id, "VIP almaq üçün əlaqə saxlayın: @user666321")
+    elif (lang == "az" and text == "⭐ VIP almaq") or (lang == "ru" and text == "⭐ Купить VIP"):
+        bot.send_message(user_id, "VIP almaq üçün əlaqə saxlayın: @user666321" if lang=="az" else "Связаться для покупки VIP: @user666321")
 
     else:
         partner_id = users[user_id].get("partner")
@@ -227,25 +299,26 @@ def chat_handler(message):
                 bot.send_message(partner_id, text)
             except:
                 stop_chat(user_id)
-                bot.send_message(user_id, "⚠️ Tərəfdaş söhbətdən ayrıldı.")
+                bot.send_message(user_id, "⚠️ Tərəfdaş söhbətdən ayrıldı." if lang=="az" else "⚠️ Партнер покинул чат.")
         else:
-            bot.send_message(user_id, "❗ Siz bağlı deyilsiniz.", reply_markup=main_menu())
+            bot.send_message(user_id, "❗ Siz bağlı deyilsiniz." if lang=="az" else "❗ Вы не подключены.", reply_markup=main_menu(lang))
 
 def set_sex(message):
     user_id = message.from_user.id
     sex = message.text.strip()
-    if sex not in ["Kişi", "Qadın"]:
-        msg = bot.send_message(user_id, "Zəhmət olmasa 'Kişi' və ya 'Qadın' yazın.")
+    lang = users[user_id].get("lang", "az")
+    if (lang == "az" and sex not in ["Kişi", "Qadın"]) or (lang == "ru" and sex not in ["Мужчина", "Женщина"]):
+        msg = bot.send_message(user_id, "Zəhmət olmasa 'Kişi' və ya 'Qadın' yazın." if lang=="az" else "Пожалуйста, введите 'Мужчина' или 'Женщина'.")
         return bot.register_next_step_handler(msg, set_sex)
     users[user_id]["sex"] = sex
-    bot.send_message(user_id, f"Cinsiniz: {sex}. Axtarış başlayır...")
+    bot.send_message(user_id, ("Cinsiniz: " + sex + ". Axtarış başlayır...") if lang=="az" else ("Ваш пол: " + sex + ". Поиск начинается..."))
     stop_chat(user_id)
     p = find_partner(user_id, "gender")
     if p:
-        bot.send_message(user_id, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!")
-        bot.send_message(p, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!")
+        bot.send_message(user_id, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!" if lang=="az" else "🟢 Партнер найден. Можете писать!")
+        bot.send_message(p, "🟢 Tərəfdaş tapıldı. Yazışa bilərsiniz!" if lang=="az" else "🟢 Партнер найден. Можете писать!")
     else:
-        bot.send_message(user_id, "⏳ Tərəfdaş axtarılır...")
+        bot.send_message(user_id, "⏳ Tərəfdaş axtarılır..." if lang=="az" else "⏳ Партнер ищется...")
 
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
@@ -291,5 +364,4 @@ if WEBHOOK_URL:
     bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    server.run(host="0.0.0.0", port=port)
+    port = int(os.environ
