@@ -5,7 +5,7 @@ import logging
 
 TOKEN = "7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc"
 ADMINS = [6671597409]
-VIP_USERS = set(ADMINS)
+VIP_USERS = set(ADMINS)  # Используем set для удобства
 
 bot = telebot.TeleBot(TOKEN)
 server = Flask(__name__)
@@ -17,6 +17,7 @@ queue_random = []
 queue_gender = []
 queue_gay = []
 
+# Лимит сообщений для обычных пользователей
 MESSAGE_LIMIT = 20
 
 def main_menu():
@@ -35,12 +36,15 @@ def check_limit(user_id):
     if user is None:
         users[user_id] = {"sex": None, "interest": None, "partner": None, "messages_sent": 0}
         return True
-    return user.get("messages_sent", 0) < MESSAGE_LIMIT
+    if user.get("messages_sent", 0) < MESSAGE_LIMIT:
+        return True
+    else:
+        return False
 
 def increment_messages(user_id):
     if user_id not in users:
         users[user_id] = {"sex": None, "interest": None, "partner": None, "messages_sent": 0}
-    users[user_id]["messages_sent"] += 1
+    users[user_id]["messages_sent"] = users[user_id].get("messages_sent", 0) + 1
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -55,9 +59,12 @@ def admin_cmd(message):
     if user_id not in ADMINS:
         bot.send_message(user_id, "⛔ Bu komanda yalnız adminlər üçündür.")
         return
-    bot.send_message(user_id, "👑 Siz adminsiniz. VIP funksiyalar aktivdir.\n\n"
-                              "/vip_add <id> - VIP əlavə et\n"
-                              "/vip_remove <id> - VIP sil")
+    bot.send_message(
+        user_id,
+        "👑 Siz adminsiniz. VIP funksiyalar aktivdir.\n\n"
+        "/vip_add <id> - VIP əlavə et\n"
+        "/vip_remove <id> - VIP sil"
+    )
 
 @bot.message_handler(commands=['vip_add'])
 def vip_add(message):
@@ -66,16 +73,10 @@ def vip_add(message):
         bot.send_message(user_id, "⛔ Bu komanda yalnız adminlər üçündür.")
         return
     try:
-        new_vip = int(message.text.split()[1])
+        args = message.text.split()
+        new_vip = int(args[1])
     except (IndexError, ValueError):
         bot.send_message(user_id, "⚠️ İstifadə: /vip_add <user_id>")
         return
     VIP_USERS.add(new_vip)
-    bot.send_message(user_id, f"✅ İstifadəçi {new_vip} VIP olaraq əlavə edildi.")
-    bot.send_message(new_vip, "🎉 Sizə VIP status verildi!")
-
-@bot.message_handler(commands=['vip_remove'])
-def vip_remove(message):
-    user_id = message.from_user.id
-    if user_id not in ADMINS:
-        bot.send_message(user_id,
+    bot.send_message(user_id
