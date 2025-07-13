@@ -2,7 +2,7 @@ import os
 import socket
 import asyncio
 from flask import Flask, request
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, filters, ConversationHandler, ContextTypes
@@ -14,10 +14,7 @@ WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 app = Flask(__name__)
 
 IP, PORT, METHOD = range(3)
-
 user_data = {}
-
-# Функции нагрузки (tcp_test, udp_test) оставь как есть, только async
 
 async def tcp_test(ip, port, count=20):
     loop = asyncio.get_event_loop()
@@ -66,8 +63,6 @@ async def udp_test(ip, port, count=20):
         else:
             fail += 1
     return success, fail
-
-# Хендлеры — все async
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -118,7 +113,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.edit_message_text("Неизвестный метод.")
             return ConversationHandler.END
-        await update.callback_query.edit_message_text(f"Результаты:\nУспешно: {success}\nОшибок: {fail}")
+        await query.edit_message_text(f"Результаты:\nУспешно: {success}\nОшибок: {fail}")
         return ConversationHandler.END
     elif data == 'reset':
         user_data[user_id] = {}
@@ -165,19 +160,19 @@ async def method_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(f"Выбран метод: {method.upper()}")
     return ConversationHandler.END
 
-# Flask webhook
-
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    application.process_update(update)  # Теперь через Application
+    from telegram import Update
+    json_update = request.get_json(force=True)
+    update = Update.de_json(json_update, application.bot)
+    asyncio.run(application.process_update(update))
     return 'OK'
 
 @app.route('/')
 def index():
     return "Бот работает"
 
-def main():
+async def main_async():
     global application
     application = Application.builder().token(TOKEN).build()
 
@@ -193,10 +188,14 @@ def main():
     )
     application.add_handler(conv_handler)
 
-    # Устанавливаем webhook
-    application.bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
+    await application.bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
 
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    # Запускаем Flask сервер в отдельном потоке, чтобы не блокировать asyncio цикл
+    from threading import Thread
+    def run_flask():
+        app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    flask_thread = Thread(target=run_flask)
+    flask_thread.start()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main_async())
