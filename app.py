@@ -7,6 +7,7 @@ from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, filters, ConversationHandler, ContextTypes
 )
+from threading import Thread
 
 TOKEN = os.environ.get("TOKEN")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
@@ -188,10 +189,10 @@ async def main_async():
     )
     application.add_handler(conv_handler)
 
+    # Устанавливаем webhook с await
     await application.bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
 
-    # Запускаем Flask сервер в отдельном потоке, чтобы не блокировать asyncio цикл
-    from threading import Thread
+    # Запускаем Flask в отдельном потоке
     def run_flask():
         app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
     flask_thread = Thread(target=run_flask)
