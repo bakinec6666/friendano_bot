@@ -1,6 +1,7 @@
 import telebot
 from flask import Flask, request
 import os
+import logging
 
 TOKEN = os.environ.get("TOKEN")
 ADMINS = [6671597409]
@@ -8,6 +9,7 @@ VIP_USERS = set(ADMINS)
 
 bot = telebot.TeleBot(TOKEN)
 server = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
 
 users = {}
 queue_random = []
@@ -145,8 +147,8 @@ def start(message):
         "sex": None,
         "interest": None,
         "partner": None,
-        "name": message.from_user.first_name,
-        "username": message.from_user.username,
+        "name": message.from_user.first_name or "",
+        "username": message.from_user.username or "",
         "lang": None
     }
 
@@ -170,31 +172,3 @@ def language_selection(message):
 @bot.message_handler(commands=['ahelp'])
 def ahelp(message):
     if message.from_user.id not in ADMINS:
-        return
-    bot.send_message(message.chat.id, (
-        "🔧 *Admin komandaları:*\n"
-        "/ahelp — это помощь\n"
-        "/users — активные пользователи\n"
-        "/vip_add <id>\n"
-        "/vip_remove <id>\n"
-        "/vip_add_username @username\n"
-        "/broadcast <текст> — рассылка сообщений"
-    ), parse_mode="Markdown")
-
-@bot.message_handler(commands=['users'])
-def list_users(message):
-    if message.from_user.id not in ADMINS:
-        return
-    text = "🔎 Активные пользователи:\n"
-    for uid, data in users.items():
-        text += f"{uid} - {data.get('name', '')}\n"
-    bot.send_message(message.chat.id, text)
-
-@bot.message_handler(commands=['vip_add'])
-def vip_add(message):
-    if message.from_user.id not in ADMINS:
-        return
-    try:
-        new_id = int(message.text.split()[1])
-        VIP_USERS.add(new_id)
-        bot.send_message(message.chat.id, f"✅
