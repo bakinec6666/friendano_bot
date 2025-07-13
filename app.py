@@ -11,7 +11,8 @@ from threading import Thread
 
 TOKEN = os.environ.get("TOKEN")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
-
+if not TOKEN or not WEBHOOK_URL:
+    raise ValueError("❌ Переменные окружения TOKEN или WEBHOOK_URL не заданы!")
 app = Flask(__name__)
 
 IP, PORT, METHOD = range(3)
