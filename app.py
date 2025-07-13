@@ -11,6 +11,9 @@ from threading import Thread
 
 TOKEN = os.environ.get("TOKEN")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
+print(f"[DEBUG] TOKEN: {TOKEN[:10]}...")  # Убедись, что токен подставляется
+if not TOKEN:
+    raise ValueError("❌ Переменная TOKEN не задана!")
 if not TOKEN or not WEBHOOK_URL:
     raise ValueError("❌ Переменные окружения TOKEN или WEBHOOK_URL не заданы!")
 app = Flask(__name__)
