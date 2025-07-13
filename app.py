@@ -2,23 +2,22 @@ import os
 import socket
 import asyncio
 from flask import Flask, request
-from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import (
-    Dispatcher, CommandHandler, CallbackQueryHandler,
+    Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, filters, ConversationHandler, ContextTypes
 )
 
-# Твой токен здесь (рекомендуется хранить в переменных окружения)
-TOKEN = "7323003204:AAGK9y-OOit1gt1tfponSRjYislQgbP_xls"
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")  # https://yourapp.onrender.com - ставь в Render
+TOKEN = os.environ.get("TOKEN")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
 app = Flask(__name__)
-bot = Bot(token=TOKEN)
-dp = Dispatcher(bot=bot, update_queue=None, use_context=True)
 
 IP, PORT, METHOD = range(3)
 
 user_data = {}
+
+# Функции нагрузки (tcp_test, udp_test) оставь как есть, только async
 
 async def tcp_test(ip, port, count=20):
     loop = asyncio.get_event_loop()
@@ -67,6 +66,8 @@ async def udp_test(ip, port, count=20):
         else:
             fail += 1
     return success, fail
+
+# Хендлеры — все async
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -117,7 +118,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.edit_message_text("Неизвестный метод.")
             return ConversationHandler.END
-        await query.edit_message_text(f"Результаты:\nУспешно: {success}\nОшибок: {fail}")
+        await update.callback_query.edit_message_text(f"Результаты:\nУспешно: {success}\nОшибок: {fail}")
         return ConversationHandler.END
     elif data == 'reset':
         user_data[user_id] = {}
@@ -164,10 +165,12 @@ async def method_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(f"Выбран метод: {method.upper()}")
     return ConversationHandler.END
 
+# Flask webhook
+
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
-    asyncio.run(dp.process_update(update))
+    application.process_update(update)  # Теперь через Application
     return 'OK'
 
 @app.route('/')
@@ -175,6 +178,9 @@ def index():
     return "Бот работает"
 
 def main():
+    global application
+    application = Application.builder().token(TOKEN).build()
+
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start), CallbackQueryHandler(button_handler)],
         states={
@@ -185,9 +191,11 @@ def main():
         fallbacks=[CommandHandler('start', start)],
         allow_reentry=True
     )
-    dp.add_handler(conv_handler)
+    application.add_handler(conv_handler)
 
-    bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
+    # Устанавливаем webhook
+    application.bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
+
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
 
 if __name__ == '__main__':
