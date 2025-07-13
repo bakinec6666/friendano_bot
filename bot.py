@@ -1,16 +1,8 @@
 import telebot
 from flask import Flask, request
 import os
-import logging
-from functools import wraps
-import traceback
-
-logging.basicConfig(level=logging.INFO)
 
 TOKEN = os.environ.get("TOKEN")
-if not TOKEN:
-    raise ValueError("Не найден TOKEN в переменных окружения")
-
 ADMINS = [6671597409]
 VIP_USERS = set(ADMINS)
 
@@ -81,30 +73,22 @@ MENU_TEXTS = {
     }
 }
 
-keyboards_cache = {}
-
 def get_text(user_id, key):
     lang = users.get(user_id, {}).get("lang", "az")
     return MENU_TEXTS[lang][key]
 
-def get_texts(user_id):
-    lang = users.get(user_id, {}).get("lang", "az")
-    return MENU_TEXTS[lang]
-
 def main_menu(user_id):
     lang = users.get(user_id, {}).get("lang", "az")
-    if lang not in keyboards_cache:
-        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-        mt = MENU_TEXTS[lang]
-        markup.add(mt["random_search"], mt["gender_search"], mt["gay_search"])
-        markup.add(mt["stop"], mt["back"], mt["buy_vip"])
-        keyboards_cache[lang] = markup
-    return keyboards_cache[lang]
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    mt = MENU_TEXTS[lang]
+    markup.add(mt["random_search"], mt["gender_search"], mt["gay_search"])
+    markup.add(mt["stop"], mt["back"], mt["buy_vip"])
+    return markup
 
 def sex_selection_markup(user_id):
     lang = users.get(user_id, {}).get("lang", "az")
-    options = MENU_TEXTS[lang]["sex_options"]
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    options = MENU_TEXTS[lang]["sex_options"]
     markup.add(*options)
     return markup
 
@@ -122,74 +106,54 @@ def stop_chat(user_id):
         users[partner_id]["partner"] = None
         remove_from_all_queues(partner_id)
         try:
-            bot.send_message(partner_id, get_text(partner_id, "chat_stopped"), reply_markup=main_menu(partner_id))
-        except Exception:
-            logging.error(f"Failed to notify partner {partner_id} about chat stop.\n{traceback.format_exc()}")
+            bot.send_message(partner_id, get_text(partner_id, "chat_stopped"))
+        except:
+            pass
     users[user_id]["partner"] = None
     remove_from_all_queues(user_id)
 
 def find_partner(user_id, search_type):
-    user_data = users.get(user_id)
-    if not user_data:
-        return None
-    if user_data.get("partner"):
-        return user_data["partner"]
+    user_sex = users[user_id].get("sex")
+    if users[user_id].get("partner"):
+        return users[user_id]["partner"]
 
-    user_sex = user_data.get("sex")
     queue = queue_random if search_type == "random" else queue_gender if search_type == "gender" else queue_gay
 
     for other_id in queue:
-        if other_id == user_id:
-            continue
-        other_data = users.get(other_id)
-        if not other_data or other_data.get("partner") is not None:
-            continue
-        if search_type == "gender":
-            other_sex = other_data.get("sex")
-            if user_sex is None or other_sex is None:
-                continue
-            if other_sex == user_sex:
-                continue
-        users[user_id]["partner"] = other_id
-        users[other_id]["partner"] = user_id
-        queue.remove(other_id)
-        return other_id
+        if other_id != user_id and users[other_id].get("partner") is None:
+            if search_type == "gender":
+                other_sex = users[other_id].get("sex")
+                if other_sex == user_sex:
+                    continue
+            users[user_id]["partner"] = other_id
+            users[other_id]["partner"] = user_id
+            queue.remove(other_id)
+            return other_id
 
     if user_id not in queue:
         queue.append(user_id)
     return None
-
-def admin_only(func):
-    @wraps(func)
-    def wrapper(message):
-        if message.from_user.id not in ADMINS:
-            return
-        return func(message)
-    return wrapper
 
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.from_user.id
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     markup.add("🇦🇿 Azərbaycan", "🇷🇺 Русский")
+    bot.send_message(user_id, "Zəhmət olmasa, seçim edin / Пожалуйста, выберите язык", reply_markup=markup)
 
-    if user_id not in users:
-        users[user_id] = {
-            "sex": None,
-            "interest": None,
-            "partner": None,
-            "name": message.from_user.first_name or "",
-            "username": message.from_user.username or "",
-            "lang": None
-        }
-
-    bot.send_message(user_id, "Zəhmət olmasa, dilinizi seçin / Пожалуйста, выберите язык", reply_markup=markup)
+    users[user_id] = {
+        "sex": None,
+        "interest": None,
+        "partner": None,
+        "name": message.from_user.first_name,
+        "username": message.from_user.username,
+        "lang": None
+    }
 
 @bot.message_handler(func=lambda m: users.get(m.from_user.id, {}).get("lang") is None)
 def language_selection(message):
     user_id = message.from_user.id
     text = message.text.strip()
-    logging.info(f"Language selection from {user_id}: {text}")
 
     if text == "🇦🇿 Azərbaycan":
         users[user_id]["lang"] = "az"
@@ -204,58 +168,33 @@ def language_selection(message):
     bot.send_message(user_id, welcome_text, reply_markup=main_menu(user_id), parse_mode="Markdown")
 
 @bot.message_handler(commands=['ahelp'])
-@admin_only
 def ahelp(message):
+    if message.from_user.id not in ADMINS:
+        return
     bot.send_message(message.chat.id, (
         "🔧 *Admin komandaları:*\n"
-        "/ahelp — yardım\n"
-        "/users — aktiv istifadəçilər\n"
-        "/vip_add <id> — VIP əlavə et\n"
-        "/vip_remove <id> — VIP çıxar\n"
-        "/vip_add_username @username — VIP əlavə et\n"
-        "/broadcast <mətn> — yayımla"
+        "/ahelp — это помощь\n"
+        "/users — активные пользователи\n"
+        "/vip_add <id>\n"
+        "/vip_remove <id>\n"
+        "/vip_add_username @username\n"
+        "/broadcast <текст> — рассылка сообщений"
     ), parse_mode="Markdown")
 
 @bot.message_handler(commands=['users'])
-@admin_only
 def list_users(message):
-    text = "🔎 Aktiv istifadəçilər:\n"
+    if message.from_user.id not in ADMINS:
+        return
+    text = "🔎 Активные пользователи:\n"
     for uid, data in users.items():
-        name = data.get('name') or ""
-        text += f"{uid} - {name}\n"
+        text += f"{uid} - {data.get('name', '')}\n"
     bot.send_message(message.chat.id, text)
 
 @bot.message_handler(commands=['vip_add'])
-@admin_only
 def vip_add(message):
+    if message.from_user.id not in ADMINS:
+        return
     try:
         new_id = int(message.text.split()[1])
         VIP_USERS.add(new_id)
-        bot.send_message(message.chat.id, f"✅ {new_id} artıq VIP-dir")
-        bot.send_message(new_id, "🎉 Sizə VIP status verildi!")
-    except Exception:
-        bot.send_message(message.chat.id, "⚠️ İstifadə: /vip_add <id>")
-
-@bot.message_handler(commands=['vip_remove'])
-@admin_only
-def vip_remove(message):
-    try:
-        rem_id = int(message.text.split()[1])
-        VIP_USERS.discard(rem_id)
-        bot.send_message(message.chat.id, f"❌ {rem_id} VIP statusu silindi")
-        bot.send_message(rem_id, "⚠️ VIP statusunuz ləğv edildi")
-    except Exception:
-        bot.send_message(message.chat.id, "⚠️ İstifadə: /vip_remove <id>")
-
-@bot.message_handler(commands=['vip_add_username'])
-@admin_only
-def vip_add_username(message):
-    try:
-        uname = message.text.split()[1].lstrip("@")
-        for uid, data in users.items():
-            if data.get("username") == uname:
-                VIP_USERS.add(uid)
-                bot.send_message(message.chat.id, f"✅ @{uname} artıq VIP-dir")
-                bot.send_message(uid, "🎉 Sizə VIP status verildi!")
-                return
-        bot.send_message(message.chat.id, "❌ İstifadəçi tap
+        bot.send_message(message.chat.id, f"✅
