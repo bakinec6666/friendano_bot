@@ -9,13 +9,18 @@ from telegram.ext import (
 )
 from threading import Thread
 
+# Получение переменных окружения
 TOKEN = os.environ.get("TOKEN")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
-print(f"[DEBUG] TOKEN: {TOKEN[:10]}...")  # Убедись, что токен подставляется
-if not TOKEN:
-    raise ValueError("❌ Переменная TOKEN не задана!")
+
+# Отладочные выводы
+print(f"[DEBUG] TOKEN: {TOKEN[:10]}...")
+print(f"[DEBUG] WEBHOOK_URL: {WEBHOOK_URL}")
+
+# Проверка переменных окружения
 if not TOKEN or not WEBHOOK_URL:
     raise ValueError("❌ Переменные окружения TOKEN или WEBHOOK_URL не заданы!")
+
 app = Flask(__name__)
 
 IP, PORT, METHOD = range(3)
@@ -167,7 +172,6 @@ async def method_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
-    from telegram import Update
     json_update = request.get_json(force=True)
     update = Update.de_json(json_update, application.bot)
     asyncio.run(application.process_update(update))
@@ -193,12 +197,13 @@ async def main_async():
     )
     application.add_handler(conv_handler)
 
-    # Устанавливаем webhook с await
+    # Устанавливаем webhook
     await application.bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
 
     # Запускаем Flask в отдельном потоке
     def run_flask():
         app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
     flask_thread = Thread(target=run_flask)
     flask_thread.start()
 
