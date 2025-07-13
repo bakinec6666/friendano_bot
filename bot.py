@@ -208,18 +208,18 @@ def language_selection(message):
 def ahelp(message):
     bot.send_message(message.chat.id, (
         "🔧 *Admin komandaları:*\n"
-        "/ahelp — помощь по командам\n"
-        "/users — список активных пользователей\n"
-        "/vip_add <id> — добавить VIP\n"
-        "/vip_remove <id> — снять VIP\n"
-        "/vip_add_username @username — добавить VIP по юзернейму\n"
-        "/broadcast <текст> — рассылка сообщений"
+        "/ahelp — yardım\n"
+        "/users — aktiv istifadəçilər\n"
+        "/vip_add <id> — VIP əlavə et\n"
+        "/vip_remove <id> — VIP çıxar\n"
+        "/vip_add_username @username — VIP əlavə et\n"
+        "/broadcast <mətn> — yayımla"
     ), parse_mode="Markdown")
 
 @bot.message_handler(commands=['users'])
 @admin_only
 def list_users(message):
-    text = "🔎 Активные пользователи:\n"
+    text = "🔎 Aktiv istifadəçilər:\n"
     for uid, data in users.items():
         name = data.get('name') or ""
         text += f"{uid} - {name}\n"
@@ -231,10 +231,10 @@ def vip_add(message):
     try:
         new_id = int(message.text.split()[1])
         VIP_USERS.add(new_id)
-        bot.send_message(message.chat.id, f"✅ {new_id} теперь VIP")
-        bot.send_message(new_id, "🎉 Вам выдан VIP статус!")
+        bot.send_message(message.chat.id, f"✅ {new_id} artıq VIP-dir")
+        bot.send_message(new_id, "🎉 Sizə VIP status verildi!")
     except Exception:
-        bot.send_message(message.chat.id, "⚠️ Использование: /vip_add <id>")
+        bot.send_message(message.chat.id, "⚠️ İstifadə: /vip_add <id>")
 
 @bot.message_handler(commands=['vip_remove'])
 @admin_only
@@ -242,10 +242,10 @@ def vip_remove(message):
     try:
         rem_id = int(message.text.split()[1])
         VIP_USERS.discard(rem_id)
-        bot.send_message(message.chat.id, f"❌ {rem_id} VIP статус снят")
-        bot.send_message(rem_id, "⚠️ Ваш VIP статус был снят")
+        bot.send_message(message.chat.id, f"❌ {rem_id} VIP statusu silindi")
+        bot.send_message(rem_id, "⚠️ VIP statusunuz ləğv edildi")
     except Exception:
-        bot.send_message(message.chat.id, "⚠️ Использование: /vip_remove <id>")
+        bot.send_message(message.chat.id, "⚠️ İstifadə: /vip_remove <id>")
 
 @bot.message_handler(commands=['vip_add_username'])
 @admin_only
@@ -255,9 +255,7 @@ def vip_add_username(message):
         for uid, data in users.items():
             if data.get("username") == uname:
                 VIP_USERS.add(uid)
-                bot.send_message(message.chat.id, f"✅ @{uname} теперь VIP")
-                bot.send_message(uid, "🎉 Вам выдан VIP статус!")
+                bot.send_message(message.chat.id, f"✅ @{uname} artıq VIP-dir")
+                bot.send_message(uid, "🎉 Sizə VIP status verildi!")
                 return
-        bot.send_message(message.chat.id, "❌ Пользователь не найден")
-    except Exception:
-        bot.send_message(message.chat.id, "⚠️
+        bot.send_message(message.chat.id, "❌ İstifadəçi tap
