@@ -13,23 +13,20 @@ from threading import Thread
 TOKEN = os.environ.get("TOKEN")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
-# Отладочные выводы
-print(f"[DEBUG] TOKEN: {TOKEN[:10]}...")
-print(f"[DEBUG] WEBHOOK_URL: {WEBHOOK_URL}")
-
-# Проверка переменных окружения
 if not TOKEN or not WEBHOOK_URL:
     raise ValueError("❌ Переменные окружения TOKEN или WEBHOOK_URL не заданы!")
 
+# Flask приложение
 app = Flask(__name__)
 
+# Переменные состояний
 IP, PORT, METHOD = range(3)
 user_data = {}
 
+# Тест TCP
 async def tcp_test(ip, port, count=20):
     loop = asyncio.get_event_loop()
-    success = 0
-    fail = 0
+    success, fail = 0, 0
 
     def tcp_connect():
         try:
@@ -41,19 +38,16 @@ async def tcp_test(ip, port, count=20):
         except:
             return False
 
-    tasks = [loop.run_in_executor(None, tcp_connect) for _ in range(count)]
-    results = await asyncio.gather(*tasks)
+    results = await asyncio.gather(*[loop.run_in_executor(None, tcp_connect) for _ in range(count)])
     for r in results:
-        if r:
-            success += 1
-        else:
-            fail += 1
+        if r: success += 1
+        else: fail += 1
     return success, fail
 
+# Тест UDP
 async def udp_test(ip, port, count=20):
     loop = asyncio.get_event_loop()
-    success = 0
-    fail = 0
+    success, fail = 0, 0
 
     def udp_send():
         try:
@@ -65,15 +59,13 @@ async def udp_test(ip, port, count=20):
         except:
             return False
 
-    tasks = [loop.run_in_executor(None, udp_send) for _ in range(count)]
-    results = await asyncio.gather(*tasks)
+    results = await asyncio.gather(*[loop.run_in_executor(None, udp_send) for _ in range(count)])
     for r in results:
-        if r:
-            success += 1
-        else:
-            fail += 1
+        if r: success += 1
+        else: fail += 1
     return success, fail
 
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_data[user_id] = {}
@@ -84,13 +76,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("Запустить тест", callback_data='run_test')],
         [InlineKeyboardButton("Сбросить", callback_data='reset')],
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Привет! Выберите действие:", reply_markup=reply_markup)
+    await update.message.reply_text("Привет! Выберите действие:", reply_markup=InlineKeyboardMarkup(keyboard))
 
+# Обработка кнопок
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user_id = query.from_user.id
     await query.answer()
+    user_id = query.from_user.id
     data = query.data
 
     if data == 'enter_ip':
@@ -108,10 +100,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Выберите метод:", reply_markup=InlineKeyboardMarkup(keyboard))
         return METHOD
     elif data == 'run_test':
-        data_user = user_data.get(user_id, {})
-        ip = data_user.get('ip')
-        port = data_user.get('port')
-        method = data_user.get('method')
+        info = user_data.get(user_id, {})
+        ip = info.get('ip')
+        port = info.get('port')
+        method = info.get('method')
         if not ip or not port or not method:
             await query.edit_message_text("Сначала введите IP, порт и выберите метод.")
             return ConversationHandler.END
@@ -123,7 +115,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.edit_message_text("Неизвестный метод.")
             return ConversationHandler.END
-        await query.edit_message_text(f"Результаты:\nУспешно: {success}\nОшибок: {fail}")
+        await query.edit_message_text(f"Результаты:\n✅ Успешно: {success}\n❌ Ошибок: {fail}")
         return ConversationHandler.END
     elif data == 'reset':
         user_data[user_id] = {}
@@ -136,51 +128,59 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Неизвестная команда.")
         return ConversationHandler.END
 
+# Ввод IP
 async def ip_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     ip = update.message.text.strip()
     parts = ip.split('.')
     if len(parts) != 4 or not all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
-        await update.message.reply_text("Неверный IP, попробуйте ещё раз.")
+        await update.message.reply_text("❗ Неверный IP. Попробуйте ещё раз.")
         return IP
     user_data[user_id]['ip'] = ip
-    await update.message.reply_text(f"IP установлен: {ip}")
+    await update.message.reply_text(f"✅ IP установлен: {ip}")
     return ConversationHandler.END
 
+# Ввод порта
 async def port_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     port_text = update.message.text.strip()
     if not port_text.isdigit():
-        await update.message.reply_text("Порт должен быть числом, попробуйте ещё раз.")
+        await update.message.reply_text("Порт должен быть числом.")
         return PORT
     port = int(port_text)
-    if port < 1 or port > 65535:
+    if not (1 <= port <= 65535):
         await update.message.reply_text("Порт вне диапазона 1-65535.")
         return PORT
     user_data[user_id]['port'] = port
-    await update.message.reply_text(f"Порт установлен: {port}")
+    await update.message.reply_text(f"✅ Порт установлен: {port}")
     return ConversationHandler.END
 
+# Выбор метода
 async def method_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    method = query.data.replace('method_', '')
+    await query.answer()
+    method = query.data.replace("method_", "")
     user_id = query.from_user.id
     user_data[user_id]['method'] = method
-    await query.answer()
     await query.edit_message_text(f"Выбран метод: {method.upper()}")
     return ConversationHandler.END
 
+# Webhook маршрут
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
     json_update = request.get_json(force=True)
-    update = Update.de_json(json_update, application.bot)
-    asyncio.run(application.process_update(update))
+    update = Update.de_json(json_update)
+    loop = asyncio.get_event_loop()
+    task = loop.create_task(application.process_update(update))
+    loop.run_until_complete(task)
     return 'OK'
 
+# Главная страница
 @app.route('/')
 def index():
-    return "Бот работает"
+    return "✅ Бот работает!"
 
+# Основной async запуск
 async def main_async():
     global application
     application = Application.builder().token(TOKEN).build()
@@ -195,17 +195,14 @@ async def main_async():
         fallbacks=[CommandHandler('start', start)],
         allow_reentry=True
     )
-    application.add_handler(conv_handler)
 
-    # Устанавливаем webhook
+    application.add_handler(conv_handler)
     await application.bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
 
-    # Запускаем Flask в отдельном потоке
     def run_flask():
         app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
 
-    flask_thread = Thread(target=run_flask)
-    flask_thread.start()
+    Thread(target=run_flask).start()
 
 if __name__ == '__main__':
     asyncio.run(main_async())
