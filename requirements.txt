@@ -1,2 +1,2 @@
-pyTelegramBotAPI==4.12.0
 Flask
+python-telegram-bot==20.6
