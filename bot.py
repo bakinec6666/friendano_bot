@@ -1,190 +1,126 @@
-import os
-import asyncio
-import socket
-from flask import Flask, request
-from threading import Thread
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler, MessageHandler,
-    ConversationHandler, ContextTypes, filters
-)
+import logging
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 
-# Константы состояний
-IP, PORT, METHOD = range(3)
+BOT_TOKEN = "7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc"
+VIP_USERS = [6671597409]  # Buraya VIP istifadəçilərin ID-lərini əlavə et
 
-# Flask приложение
-app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Глобальные переменные
-user_data = {}
+# İstifadəçi vəziyyəti və partnyorlar
+user_states = {}
+partners = {}
 
-# Получаем переменные окружения
-TOKEN = os.environ.get("TOKEN")
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
-
-if not TOKEN or not WEBHOOK_URL:
-    raise ValueError("❌ Переменные окружения TOKEN и WEBHOOK_URL не заданы!")
-
-application = Application.builder().token(TOKEN).build()
-
-# Хэндлер /start
+# Start menyusu
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_data[user_id] = {}
+    user = update.effective_user
+    user_states[user.id] = "free"
     keyboard = [
-        [InlineKeyboardButton("Ввести IP", callback_data='enter_ip')],
-        [InlineKeyboardButton("Ввести порт", callback_data='enter_port')],
-        [InlineKeyboardButton("Выбрать метод", callback_data='choose_method')],
-        [InlineKeyboardButton("Запустить тест", callback_data='run_test')],
-        [InlineKeyboardButton("Сбросить", callback_data='reset')],
+        [InlineKeyboardButton("🔄 Random axtarış", callback_data="random")],
+        [InlineKeyboardButton("💬 Hamı ilə söhbət", callback_data="bisexual")],
+        [InlineKeyboardButton("👫 Cinsə görə axtarış (VIP)", callback_data="gender")],
+        [InlineKeyboardButton("⭐ VIP al", callback_data="buy_vip")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Привет! Выберите действие:", reply_markup=reply_markup)
-
-# Хэндлер кнопок
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    data = query.data
-
-    if data == 'enter_ip':
-        await query.edit_message_text("Введите IP адрес:")
-        return IP
-    elif data == 'enter_port':
-        await query.edit_message_text("Введите порт (1-65535):")
-        return PORT
-    elif data == 'choose_method':
-        keyboard = [
-            [InlineKeyboardButton("TCP", callback_data='method_tcp')],
-            [InlineKeyboardButton("UDP", callback_data='method_udp')],
-            [InlineKeyboardButton("Отмена", callback_data='cancel')]
-        ]
-        await query.edit_message_text("Выберите метод:", reply_markup=InlineKeyboardMarkup(keyboard))
-        return METHOD
-    elif data == 'run_test':
-        data_user = user_data.get(user_id, {})
-        ip = data_user.get('ip')
-        port = data_user.get('port')
-        method = data_user.get('method')
-        if not ip or not port or not method:
-            await query.edit_message_text("Сначала введите IP, порт и выберите метод.")
-            return ConversationHandler.END
-        await query.edit_message_text(f"Запускаем {method.upper()} тест на {ip}:{port}...")
-        if method == 'tcp':
-            success, fail = await tcp_test(ip, port)
-        else:
-            success, fail = await udp_test(ip, port)
-        await query.edit_message_text(f"Результаты:\n✅ Успешно: {success}\n❌ Ошибок: {fail}")
-        return ConversationHandler.END
-    elif data == 'reset':
-        user_data[user_id] = {}
-        await query.edit_message_text("Все данные сброшены.")
-        return ConversationHandler.END
-    elif data == 'cancel':
-        await query.edit_message_text("Отменено.")
-        return ConversationHandler.END
-    else:
-        await query.edit_message_text("Неизвестная команда.")
-        return ConversationHandler.END
-
-# IP input
-async def ip_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    ip = update.message.text.strip()
-    if not all(p.isdigit() and 0 <= int(p) <= 255 for p in ip.split('.') if p):
-        await update.message.reply_text("❌ Неверный IP. Попробуйте снова.")
-        return IP
-    user_data[user_id]['ip'] = ip
-    await update.message.reply_text(f"✅ IP установлен: {ip}")
-    return ConversationHandler.END
-
-# Port input
-async def port_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    port_text = update.message.text.strip()
-    if not port_text.isdigit():
-        await update.message.reply_text("❌ Порт должен быть числом.")
-        return PORT
-    port = int(port_text)
-    if not (1 <= port <= 65535):
-        await update.message.reply_text("❌ Порт вне диапазона 1-65535.")
-        return PORT
-    user_data[user_id]['port'] = port
-    await update.message.reply_text(f"✅ Порт установлен: {port}")
-    return ConversationHandler.END
-
-# Метод (TCP/UDP)
-async def method_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-    method = query.data.replace('method_', '')
-    user_data[user_id]['method'] = method
-    await query.answer()
-    await query.edit_message_text(f"✅ Метод выбран: {method.upper()}")
-    return ConversationHandler.END
-
-# TCP test
-async def tcp_test(ip, port, count=20):
-    loop = asyncio.get_event_loop()
-    def tcp():
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(1)
-            s.connect((ip, port))
-            s.close()
-            return True
-        except:
-            return False
-    results = await asyncio.gather(*[loop.run_in_executor(None, tcp) for _ in range(count)])
-    return results.count(True), results.count(False)
-
-# UDP test
-async def udp_test(ip, port, count=20):
-    loop = asyncio.get_event_loop()
-    def udp():
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.settimeout(1)
-            s.sendto(b"ping", (ip, port))
-            s.close()
-            return True
-        except:
-            return False
-    results = await asyncio.gather(*[loop.run_in_executor(None, udp) for _ in range(count)])
-    return results.count(True), results.count(False)
-
-# Flask webhook
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    json_update = request.get_json(force=True)
-    update = Update.de_json(json_update, application.bot)
-    asyncio.run(application.process_update(update))
-    return "OK"
-
-@app.route("/")
-def home():
-    return "✅ Бот запущен и работает."
-
-# Асинхронный запуск
-async def main():
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start), CallbackQueryHandler(button_handler)],
-        states={
-            IP: [MessageHandler(filters.TEXT & ~filters.COMMAND, ip_input)],
-            PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, port_input)],
-            METHOD: [CallbackQueryHandler(method_choice, pattern="^method_")]
-        },
-        fallbacks=[CommandHandler("start", start)],
-        allow_reentry=True
+    await update.message.reply_text(
+        "👋 Salam! Axtarış növünü seç:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
-    application.add_handler(conv_handler)
 
-    # Установка webhook
-    await application.bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
+# Callback düymələr
+async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    await query.answer()
 
-    # Flask запускаем в отдельном потоке
-    Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))).start()
+    if query.data == "random":
+        await start_search(query, context, mode="random")
+    elif query.data == "bisexual":
+        await start_search(query, context, mode="bisexual")
+    elif query.data == "gender":
+        if user_id in VIP_USERS:
+            await start_search(query, context, mode="gender")
+        else:
+            await query.message.reply_text("❌ Bu funksiya yalnız VIP istifadəçilər üçündür.")
+    elif query.data == "buy_vip":
+        await query.message.reply_text("💳 VIP olmaq üçün adminlə əlaqə saxla: @youradmin")
+    elif query.data == "leave":
+        await leave_chat(user_id, context)
+
+# Axtarış funksiyası
+async def start_search(query, context, mode):
+    user_id = query.from_user.id
+    user_states[user_id] = mode
+
+    # Eyni rejimdə axtaran istifadəçi tap
+    for uid, state in user_states.items():
+        if uid != user_id and state == mode:
+            # Eşləşdir
+            user_states[user_id] = "chatting"
+            user_states[uid] = "chatting"
+            partners[user_id] = uid
+            partners[uid] = user_id
+
+            # Tərəfləri məlumatlandır
+            await context.bot.send_message(uid, "🤝 Söhbət tapıldı! İndi mesaj yaza və media göndərə bilərsən.\n🔙 Geri çıxmaq üçün menyudan istifadə et.")
+            await context.bot.send_message(user_id, "🤝 Söhbət tapıldı! İndi mesaj yaza və media göndərə bilərsən.\n🔙 Geri çıxmaq üçün menyudan istifadə et.")
+
+            # Geri düyməsi
+            leave_button = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Geri", callback_data="leave")]])
+            await query.message.reply_text("🗨 Söhbət başladı!", reply_markup=leave_button)
+            return
+
+    await query.message.reply_text("🔎 Gözləyin, istifadəçi axtarılır...")
+
+# Söhbətdən çıx
+async def leave_chat(user_id, context):
+    partner_id = partners.get(user_id)
+
+    user_states[user_id] = "free"
+    partners.pop(user_id, None)
+
+    if partner_id:
+        user_states[partner_id] = "free"
+        partners.pop(partner_id, None)
+        await context.bot.send_message(partner_id, "❗ Qarşı tərəf söhbəti tərk etdi.")
+    
+    await context.bot.send_message(user_id, "🔚 Söhbətdən çıxdınız. Baş menyuya qayıtdınız.")
+    await context.bot.send_message(user_id, "⬇️ Menyu:", reply_markup=main_menu())
+
+def main_menu():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Random axtarış", callback_data="random")],
+        [InlineKeyboardButton("💬 Hamı ilə söhbət", callback_data="bisexual")],
+        [InlineKeyboardButton("👫 Cinsə görə axtarış (VIP)", callback_data="gender")],
+        [InlineKeyboardButton("⭐ VIP al", callback_data="buy_vip")]
+    ])
+
+# Mesajları ötürmək
+async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    partner_id = partners.get(user_id)
+
+    if user_states.get(user_id) != "chatting" or not partner_id:
+        await update.message.reply_text("❗ Hazırda söhbətdə deyilsiniz. Menyudan seçim edin.")
+        return
+
+    try:
+        await update.message.copy(chat_id=partner_id)
+    except Exception as e:
+        logger.error(f"Mesaj ötürülmədi: {e}")
+        await update.message.reply_text("❌ Qarşı tərəfə göndərilə bilmədi.")
+
+# Botu işə sal
+async def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(menu_handler))
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, forward_message))
+
+    print("✅ Bot işə düşdü.")
+    await app.run_polling()
 
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
