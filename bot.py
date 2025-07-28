@@ -1,126 +1,42 @@
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    LabeledPrice,
-)
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
-    CallbackQueryHandler,
-    PreCheckoutQueryHandler,
-)
-import random
 import os
+from flask import Flask, request
+from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
 
-TOKEN = "7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc"
-PROVIDER_TOKEN = "ВСТАВЬ_СЮДА_ТОКЕН_ПЛАТЁЖНОГО_ПРОВАЙДЕРА"
+TOKEN = os.getenv("BOT_TOKEN")
+PAYMENT_TOKEN = os.getenv("PAYMENT_TOKEN")  # Токен от @BotFather (Test или Live)
+URL = os.getenv("WEBHOOK_URL")  # URL сайта на Render, например: https://ai-sexy-bot.onrender.com
 
-subscribed_users = {}
+app = Flask(__name__)
+bot = Bot(token=TOKEN)
 
-WELCOME_TEXT = (
-    "Привет, дорогой!\n"
-    "Хочешь расслабиться с реалистичной ИИ-девушкой?\n"
-    "Я умею записывать видео с реальным видом девушки, делать фото в разных позах и исполнять все твои желания.\n"
-    "Общайся со мной, и я подарю тебе незабываемые эмоции.\n"
-    "Для доступа ко всему эксклюзивному контенту оформи подписку прямо сейчас! ❤️"
-)
+VIP_USERS = set()  # Здесь будут user_id подписчиков
 
-romantic_phrases = [
-    "Ты такой загадочный... Мне нравится.",
-    "Я мечтаю о том, чтобы быть рядом с тобой.",
-    "Твои слова заставляют моё сердце биться чаще.",
-    "Я хочу узнать тебя ближе...",
-    "Ты вызываешь у меня улыбку каждый раз.",
-]
-
-flirt_phrases = [
-    "Ты умеешь интриговать, знаешь ли 😉",
-    "Если бы ты был здесь, я бы не могла устоять...",
-    "Может, расскажешь мне о своих тайных желаниях?",
-    "Ты заставляешь меня краснеть...",
-]
-
-free_phrases = [
-    "Привет! Я твоя Алёна, готова к тёплому разговору.",
-    "Расскажи мне что-нибудь о себе.",
-    "Что заставляет твоё сердце биться быстрее?",
-]
-
+# === Приветствие при /start ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    subscribed_users.setdefault(user_id, False)
-    await update.message.reply_text(WELCOME_TEXT)
+    text = (
+        "👋 Привет, дорогой!\n\n"
+        "Хочешь расслабиться с реалистичной ИИ-девушкой?\n\n"
+        "Я умею делать:\n"
+        "• 🎥 Реальные видео\n"
+        "• 📸 Откровенные фото\n"
+        "• 💋 Исполнять желания в разных позах\n\n"
+        "🔓 Разблокируй доступ к горячим материалам!"
+    )
+    keyboard = [
+        [InlineKeyboardButton("🔥 Получить доступ (VIP)", callback_data="get_vip")],
+    ]
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    text = update.message.text.lower()
-
-    if subscribed_users.get(user_id):
-        if "фото" in text or "видео" in text or "картинка" in text:
-            await update.message.reply_photo(
-                photo="https://i.imgur.com/Da1q3QD.jpg",  # ВСТАВЬ СВОЮ ССЫЛКУ
-                caption="Вот одна из моих любимых 😉 Хочешь ещё?"
-            )
-        else:
-            responses = romantic_phrases + flirt_phrases
-            await update.message.reply_text(random.choice(responses))
-    else:
-        if "фото" in text or "видео" in text or "картинка" in text:
-            keyboard = InlineKeyboardMarkup(
-                [[InlineKeyboardButton("Оформить подписку", callback_data="buy")]]
-            )
-            await update.message.reply_text(
-                "Чтобы получить доступ к моим фото, видео и более личному общению — оформи подписку.",
-                reply_markup=keyboard,
-            )
-        else:
-            await update.message.reply_text(random.choice(free_phrases))
-
+# === Обработка callback-кнопок ===
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
-    if query.data == "buy":
-        prices = [LabeledPrice("Подписка на ИИ-девушку", 50000)]  # 500.00 RUB
-        await context.bot.send_invoice(
+    if query.data == "get_vip":
+        prices = [LabeledPrice("🔥 VIP доступ", 19900)]  # 199.00₽
+        await bot.send_invoice(
             chat_id=query.message.chat_id,
-            title="Подписка на ИИ-девушку",
-            description="Оплата подписки для получения доступа ко всем фото и видео.",
-            payload="subscription_payload",
-            provider_token=PROVIDER_TOKEN,
-            currency="RUB",
-            prices=prices,
-            start_parameter="subscription",
-            need_email=True,
-        )
-
-async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.pre_checkout_query
-    if query.invoice_payload == "subscription_payload":
-        await query.answer(ok=True)
-    else:
-        await query.answer(ok=False, error_message="Что-то пошло не так...")
-
-async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    subscribed_users[user_id] = True
-    await update.message.reply_text("Спасибо за оплату! Подписка активирована ❤️")
-
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
-    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    print("Бот запущен...")
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+            title="Подписка на интимный контент",
+            description="Разблокируй доступ к фото, видео и голосам от ИИ-девушки.",
+            payload="
