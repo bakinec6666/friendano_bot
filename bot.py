@@ -1,126 +1,124 @@
-import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    LabeledPrice,
+)
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+    CallbackQueryHandler,
+    PreCheckoutQueryHandler,
+)
+import random
 
-BOT_TOKEN = "7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc"
-VIP_USERS = [6671597409]  # Buraya VIP istifadəçilərin ID-lərini əlavə et
+TOKEN = "7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc"
+PROVIDER_TOKEN = "ВСТАВЬ_СЮДА_ТОКЕН_ПЛАТЁЖНОГО_ПРОВАЙДЕРА"
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+subscribed_users = {}
 
-# İstifadəçi vəziyyəti və partnyorlar
-user_states = {}
-partners = {}
+WELCOME_TEXT = (
+    "Привет, дорогой!\n"
+    "Хочешь расслабиться с реалистичной ИИ-девушкой?\n"
+    "Я умею записывать видео с реальным видом девушки, делать фото в разных позах и исполнять все твои желания.\n"
+    "Общайся со мной, и я подарю тебе незабываемые эмоции.\n"
+    "Для доступа ко всему эксклюзивному контенту оформи подписку прямо сейчас! ❤️"
+)
 
-# Start menyusu
+romantic_phrases = [
+    "Ты такой загадочный... Мне нравится.",
+    "Я мечтаю о том, чтобы быть рядом с тобой.",
+    "Твои слова заставляют моё сердце биться чаще.",
+    "Я хочу узнать тебя ближе...",
+    "Ты вызываешь у меня улыбку каждый раз.",
+]
+
+flirt_phrases = [
+    "Ты умеешь интриговать, знаешь ли 😉",
+    "Если бы ты был здесь, я бы не могла устоять...",
+    "Может, расскажешь мне о своих тайных желаниях?",
+    "Ты заставляешь меня краснеть...",
+]
+
+free_phrases = [
+    "Привет! Я твоя Алёна, готова к тёплому разговору.",
+    "Расскажи мне что-нибудь о себе.",
+    "Что заставляет твоё сердце биться быстрее?",
+]
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_states[user.id] = "free"
-    keyboard = [
-        [InlineKeyboardButton("🔄 Random axtarış", callback_data="random")],
-        [InlineKeyboardButton("💬 Hamı ilə söhbət", callback_data="bisexual")],
-        [InlineKeyboardButton("👫 Cinsə görə axtarış (VIP)", callback_data="gender")],
-        [InlineKeyboardButton("⭐ VIP al", callback_data="buy_vip")]
-    ]
-    await update.message.reply_text(
-        "👋 Salam! Axtarış növünü seç:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    user_id = update.effective_user.id
+    subscribed_users.setdefault(user_id, False)
+    await update.message.reply_text(WELCOME_TEXT)
 
-# Callback düymələr
-async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    text = update.message.text.lower()
+
+    if subscribed_users.get(user_id):
+        if "фото" in text or "картинка" in text or "видео" in text:
+            await update.message.reply_text(
+                "Ты хочешь увидеть меня? Тогда наслаждайся эксклюзивным контентом! ❤️"
+            )
+        else:
+            responses = romantic_phrases + flirt_phrases
+            await update.message.reply_text(random.choice(responses))
+    else:
+        if "фото" in text or "картинка" in text or "видео" in text:
+            keyboard = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("Оформить подписку", callback_data="buy")]]
+            )
+            await update.message.reply_text(
+                "Чтобы получить доступ к моим фото, видео и более личному общению — оформи подписку.",
+                reply_markup=keyboard,
+            )
+        else:
+            await update.message.reply_text(random.choice(free_phrases))
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user_id = query.from_user.id
     await query.answer()
 
-    if query.data == "random":
-        await start_search(query, context, mode="random")
-    elif query.data == "bisexual":
-        await start_search(query, context, mode="bisexual")
-    elif query.data == "gender":
-        if user_id in VIP_USERS:
-            await start_search(query, context, mode="gender")
-        else:
-            await query.message.reply_text("❌ Bu funksiya yalnız VIP istifadəçilər üçündür.")
-    elif query.data == "buy_vip":
-        await query.message.reply_text("💳 VIP olmaq üçün adminlə əlaqə saxla: @youradmin")
-    elif query.data == "leave":
-        await leave_chat(user_id, context)
+    if query.data == "buy":
+        prices = [LabeledPrice("Подписка на ИИ-девушку", 50000)]  # 500.00 RUB
+        await context.bot.send_invoice(
+            chat_id=query.message.chat_id,
+            title="Подписка на ИИ-девушку",
+            description="Оплата подписки для получения полного доступа к фото и видео.",
+            payload="subscription_payload",
+            provider_token=PROVIDER_TOKEN,
+            currency="RUB",
+            prices=prices,
+            start_parameter="subscription",
+            need_email=True,
+        )
 
-# Axtarış funksiyası
-async def start_search(query, context, mode):
-    user_id = query.from_user.id
-    user_states[user_id] = mode
+async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.pre_checkout_query
+    if query.invoice_payload == "subscription_payload":
+        await query.answer(ok=True)
+    else:
+        await query.answer(ok=False, error_message="Что-то пошло не так...")
 
-    # Eyni rejimdə axtaran istifadəçi tap
-    for uid, state in user_states.items():
-        if uid != user_id and state == mode:
-            # Eşləşdir
-            user_states[user_id] = "chatting"
-            user_states[uid] = "chatting"
-            partners[user_id] = uid
-            partners[uid] = user_id
-
-            # Tərəfləri məlumatlandır
-            await context.bot.send_message(uid, "🤝 Söhbət tapıldı! İndi mesaj yaza və media göndərə bilərsən.\n🔙 Geri çıxmaq üçün menyudan istifadə et.")
-            await context.bot.send_message(user_id, "🤝 Söhbət tapıldı! İndi mesaj yaza və media göndərə bilərsən.\n🔙 Geri çıxmaq üçün menyudan istifadə et.")
-
-            # Geri düyməsi
-            leave_button = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Geri", callback_data="leave")]])
-            await query.message.reply_text("🗨 Söhbət başladı!", reply_markup=leave_button)
-            return
-
-    await query.message.reply_text("🔎 Gözləyin, istifadəçi axtarılır...")
-
-# Söhbətdən çıx
-async def leave_chat(user_id, context):
-    partner_id = partners.get(user_id)
-
-    user_states[user_id] = "free"
-    partners.pop(user_id, None)
-
-    if partner_id:
-        user_states[partner_id] = "free"
-        partners.pop(partner_id, None)
-        await context.bot.send_message(partner_id, "❗ Qarşı tərəf söhbəti tərk etdi.")
-    
-    await context.bot.send_message(user_id, "🔚 Söhbətdən çıxdınız. Baş menyuya qayıtdınız.")
-    await context.bot.send_message(user_id, "⬇️ Menyu:", reply_markup=main_menu())
-
-def main_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 Random axtarış", callback_data="random")],
-        [InlineKeyboardButton("💬 Hamı ilə söhbət", callback_data="bisexual")],
-        [InlineKeyboardButton("👫 Cinsə görə axtarış (VIP)", callback_data="gender")],
-        [InlineKeyboardButton("⭐ VIP al", callback_data="buy_vip")]
-    ])
-
-# Mesajları ötürmək
-async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    partner_id = partners.get(user_id)
+    subscribed_users[user_id] = True
+    await update.message.reply_text("Спасибо за оплату! Подписка активирована ❤️")
 
-    if user_states.get(user_id) != "chatting" or not partner_id:
-        await update.message.reply_text("❗ Hazırda söhbətdə deyilsiniz. Menyudan seçim edin.")
-        return
-
-    try:
-        await update.message.copy(chat_id=partner_id)
-    except Exception as e:
-        logger.error(f"Mesaj ötürülmədi: {e}")
-        await update.message.reply_text("❌ Qarşı tərəfə göndərilə bilmədi.")
-
-# Botu işə sal
-async def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+def main():
+    app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(menu_handler))
-    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, forward_message))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("✅ Bot işə düşdü.")
-    await app.run_polling()
+    print("Бот запущен...")
+    app.run_polling()
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()
