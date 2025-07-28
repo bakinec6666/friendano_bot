@@ -3,7 +3,7 @@ from flask import Flask, request
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc")
 PAYMENT_TOKEN = os.getenv("PAYMENT_TOKEN")  # Токен от @BotFather (Test или Live)
 URL = os.getenv("WEBHOOK_URL")  # URL сайта на Render, например: https://ai-sexy-bot.onrender.com
 
