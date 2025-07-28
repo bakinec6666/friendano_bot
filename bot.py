@@ -14,6 +14,7 @@ from telegram.ext import (
     PreCheckoutQueryHandler,
 )
 import random
+import os
 
 TOKEN = "7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc"
 PROVIDER_TOKEN = "ВСТАВЬ_СЮДА_ТОКЕН_ПЛАТЁЖНОГО_ПРОВАЙДЕРА"
@@ -59,15 +60,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.lower()
 
     if subscribed_users.get(user_id):
-        if "фото" in text or "картинка" in text or "видео" in text:
-            await update.message.reply_text(
-                "Ты хочешь увидеть меня? Тогда наслаждайся эксклюзивным контентом! ❤️"
+        if "фото" in text or "видео" in text or "картинка" in text:
+            await update.message.reply_photo(
+                photo="https://i.imgur.com/Da1q3QD.jpg",  # ВСТАВЬ СВОЮ ССЫЛКУ
+                caption="Вот одна из моих любимых 😉 Хочешь ещё?"
             )
         else:
             responses = romantic_phrases + flirt_phrases
             await update.message.reply_text(random.choice(responses))
     else:
-        if "фото" in text or "картинка" in text or "видео" in text:
+        if "фото" in text or "видео" in text or "картинка" in text:
             keyboard = InlineKeyboardMarkup(
                 [[InlineKeyboardButton("Оформить подписку", callback_data="buy")]]
             )
@@ -87,7 +89,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_invoice(
             chat_id=query.message.chat_id,
             title="Подписка на ИИ-девушку",
-            description="Оплата подписки для получения полного доступа к фото и видео.",
+            description="Оплата подписки для получения доступа ко всем фото и видео.",
             payload="subscription_payload",
             provider_token=PROVIDER_TOKEN,
             currency="RUB",
