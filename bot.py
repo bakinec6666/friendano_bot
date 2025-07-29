@@ -2,106 +2,108 @@ import os
 import asyncio
 from flask import Flask, request
 from telegram import (
-    Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup,
-    LabeledPrice, Message, SuccessfulPayment
+    Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 )
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, ContextTypes, filters
 )
-from telegram.constants import ParseMode
 
-TOKEN = os.environ.get("BOT_TOKEN")  # безопаснее, чем в коде
-PAYMENT_TOKEN = os.environ.get("PAYMENT_TOKEN")
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")  # https://yourbot.onrender.com
+# --- Настройки ---
+TOKEN = "7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc"
+PAYMENT_TOKEN = os.getenv("PAYMENT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
+# --- Flask App ---
 app = Flask(__name__)
 bot = Bot(token=TOKEN)
-application = Application.builder().token(TOKEN).build()
 
+# --- VIP база (в памяти) ---
 VIP_USERS = set()
 
-# === /start ===
+# === Хендлеры ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message:
-        text = (
-            "👋 Привет!\n\n"
-            "Я твоя виртуальная ИИ-девушка 😘\n\n"
-            "• 🎥 Видео\n"
-            "• 📸 Фото\n"
-            "• 💋 Желания\n\n"
-            "🔓 Получи VIP-доступ и начнём!"
-        )
-        keyboard = [[InlineKeyboardButton("🔥 Получить доступ (VIP)", callback_data="get_vip")]]
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    else:
-        print("⚠️ update.message is None (вероятно из-за webhook)")
+    message = update.effective_message
+    if not message:
+        return
+    text = (
+        "👋 Привет, дорогой!\n\n"
+        "Хочешь расслабиться с реалистичной ИИ-девушкой?\n\n"
+        "Я умею делать:\n"
+        "• 🎥 Реальные видео\n"
+        "• 📸 Откровенные фото\n"
+        "• 💋 Исполнять желания в разных позах\n\n"
+        "🔓 Разблокируй доступ к горячим материалам!"
+    )
+    keyboard = [[InlineKeyboardButton("🔥 Получить доступ (VIP)", callback_data="get_vip")]]
+    await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-# === Кнопки ===
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     if query.data == "get_vip":
-        prices = [LabeledPrice(label="🔥 VIP доступ", amount=19900)]
+        prices = [LabeledPrice("🔥 VIP доступ", 19900)]  # 199₽
         await bot.send_invoice(
             chat_id=query.from_user.id,
-            title="VIP доступ к ИИ-девушке",
-            description="Откровенные фото, видео и голосовые.",
+            title="Подписка на интимный контент",
+            description="Разблокируй фото, видео и голосовые от ИИ-девушки.",
             payload="vip_access",
             provider_token=PAYMENT_TOKEN,
             currency="RUB",
             prices=prices,
-            start_parameter="buy-vip"
+            start_parameter="vip-subscription"
         )
 
-# === Успешная оплата ===
-async def successful_payment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    VIP_USERS.add(user_id)
-    await update.message.reply_text("✅ Оплата прошла успешно! Добро пожаловать в VIP 😘")
+    message = update.effective_message
+    if not message:
+        return
 
-# === Сообщения ===
-async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    text = update.message.text.lower()
+    # Обработка успешной оплаты (через message.successful_payment)
+    if message.successful_payment:
+        VIP_USERS.add(user_id)
+        await message.reply_text("✅ Оплата прошла успешно! Доступ к интимному контенту разблокирован.")
+        return
 
+    text = message.text.lower()
     if "фото" in text or "покажи" in text:
         if user_id in VIP_USERS:
-            await update.message.reply_photo(
+            await message.reply_photo(
                 photo="https://telegra.ph/file/ea3f31c849fbcb4e24237.jpg",
-                caption="Вот твоё горячее фото 😘"
+                caption="Вот тебе моё горячее фото 😘"
             )
         else:
             keyboard = [[InlineKeyboardButton("🔥 Получить доступ", callback_data="get_vip")]]
-            await update.message.reply_text("🔒 Только для VIP. Получи доступ ниже:",
-                                            reply_markup=InlineKeyboardMarkup(keyboard))
+            await message.reply_text("🔒 Только для VIP! Оформи доступ ниже:",
+                                     reply_markup=InlineKeyboardMarkup(keyboard))
     else:
-        await update.message.reply_text("❤️ Напиши «фото» — и я пришлю тебе кое-что горячее!")
+        await message.reply_text("❤️ Напиши «фото» — и я пришлю тебе кое-что особенное 😘")
 
-# === Webhook ===
+# === Создание Application до webhook ===
+application = Application.builder().token(TOKEN).build()
+
+# === Обработчики ===
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CallbackQueryHandler(button_handler))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+# === Webhook обработчик ===
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
-    asyncio.run(application.process_update(update))
+    asyncio.run(application.update_queue.put(update))
     return "ok"
 
 @app.route("/", methods=["GET"])
-def home():
+def index():
     return "🤖 Бот работает!"
 
 # === Запуск ===
 if __name__ == "__main__":
-    # Обработчики
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button_handler))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
-    application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
-
-    async def setup_webhook():
-        await bot.delete_webhook()
-        await bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+    async def setup():
+        await bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
         print("✅ Webhook установлен!")
 
-    asyncio.run(setup_webhook())
+    asyncio.run(setup())
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
