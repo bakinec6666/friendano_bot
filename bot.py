@@ -10,19 +10,22 @@ from telegram.ext import (
 )
 
 # --- Настройки ---
-TOKEN = "7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc"  # твой токен
-PAYMENT_TOKEN = os.getenv("PAYMENT_TOKEN")  # выставь в Render
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # https://your-bot-name.onrender.com
+TOKEN = "7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc"  # Токен бота
+PAYMENT_TOKEN = os.getenv("PAYMENT_TOKEN")  # Выставь в Render
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Пример: https://xxx.onrender.com
 
 # --- Flask App ---
 app = Flask(__name__)
 bot = Bot(token=TOKEN)
 
-# --- VIP база (в оперативке) ---
+# --- VIP база (в памяти) ---
 VIP_USERS = set()
 
 # === /start ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.effective_message
+    if not message:
+        return
     text = (
         "👋 Привет, дорогой!\n\n"
         "Хочешь расслабиться с реалистичной ИИ-девушкой?\n\n"
@@ -33,7 +36,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔓 Разблокируй доступ к горячим материалам!"
     )
     keyboard = [[InlineKeyboardButton("🔥 Получить доступ (VIP)", callback_data="get_vip")]]
-    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 # === Callback-кнопки ===
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -56,24 +59,28 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     VIP_USERS.add(user_id)
-    await update.message.reply_text("✅ Оплата прошла успешно! Доступ к интимному контенту разблокирован.")
+    await update.effective_message.reply_text("✅ Оплата прошла успешно! Доступ к интимному контенту разблокирован.")
 
 # === Сообщения ===
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    text = update.message.text.lower()
+    message = update.effective_message
+    if not message:
+        return
+
+    text = message.text.lower()
     if "фото" in text or "покажи" in text:
         if user_id in VIP_USERS:
-            await update.message.reply_photo(
+            await message.reply_photo(
                 photo="https://telegra.ph/file/ea3f31c849fbcb4e24237.jpg",
                 caption="Вот тебе моё горячее фото 😘"
             )
         else:
             keyboard = [[InlineKeyboardButton("🔥 Получить доступ", callback_data="get_vip")]]
-            await update.message.reply_text("🔒 Только для VIP! Оформи доступ ниже:",
-                                            reply_markup=InlineKeyboardMarkup(keyboard))
+            await message.reply_text("🔒 Только для VIP! Оформи доступ ниже:",
+                                     reply_markup=InlineKeyboardMarkup(keyboard))
     else:
-        await update.message.reply_text("❤️ Напиши «фото» — и я пришлю тебе кое-что особенное 😘")
+        await message.reply_text("❤️ Напиши «фото» — и я пришлю тебе кое-что особенное 😘")
 
 # === Webhook обработчик ===
 @app.route(f"/{TOKEN}", methods=["POST"])
@@ -100,7 +107,7 @@ if __name__ == "__main__":
     # Установка Webhook
     async def setup():
         await bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
-        print("Webhook установлен!")
+        print("✅ Webhook установлен!")
 
     asyncio.run(setup())
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
