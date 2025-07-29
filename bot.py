@@ -72,8 +72,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await message.reply_text("❤️ Напиши «фото» — и я пришлю тебе кое-что особенное 😘")
 
-# === Telegram Application ===
+# === Создание Application ===
 application = Application.builder().token(TOKEN).build()
+
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CallbackQueryHandler(button_handler))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -94,6 +95,7 @@ if __name__ == "__main__":
     import asyncio
 
     async def run():
+        await application.initialize()  # Обязательно инициализируем Application
         await application.bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
         print("✅ Webhook установлен!")
 
