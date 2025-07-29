@@ -1,5 +1,4 @@
 import os
-import asyncio
 from flask import Flask, request
 from telegram import (
     Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
@@ -10,22 +9,16 @@ from telegram.ext import (
 )
 
 # --- Настройки ---
-TOKEN = "7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc"
+TOKEN = os.getenv("TOKEN", "7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc")
 PAYMENT_TOKEN = os.getenv("PAYMENT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 # --- Flask App ---
 app = Flask(__name__)
-bot = Bot(token=TOKEN)
-
-# --- VIP база (в памяти) ---
 VIP_USERS = set()
 
 # === Хендлеры ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.effective_message
-    if not message:
-        return
     text = (
         "👋 Привет, дорогой!\n\n"
         "Хочешь расслабиться с реалистичной ИИ-девушкой?\n\n"
@@ -36,14 +29,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔓 Разблокируй доступ к горячим материалам!"
     )
     keyboard = [[InlineKeyboardButton("🔥 Получить доступ (VIP)", callback_data="get_vip")]]
-    await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if query.data == "get_vip":
         prices = [LabeledPrice("🔥 VIP доступ", 19900)]  # 199₽
-        await bot.send_invoice(
+        await query.message.bot.send_invoice(
             chat_id=query.from_user.id,
             title="Подписка на интимный контент",
             description="Разблокируй фото, видео и голосовые от ИИ-девушки.",
@@ -60,7 +53,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message:
         return
 
-    # Обработка успешной оплаты (через message.successful_payment)
     if message.successful_payment:
         VIP_USERS.add(user_id)
         await message.reply_text("✅ Оплата прошла успешно! Доступ к интимному контенту разблокирован.")
@@ -80,30 +72,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await message.reply_text("❤️ Напиши «фото» — и я пришлю тебе кое-что особенное 😘")
 
-# === Создание Application до webhook ===
+# === Telegram Application ===
 application = Application.builder().token(TOKEN).build()
-
-# === Обработчики ===
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CallbackQueryHandler(button_handler))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# === Webhook обработчик ===
+# === Webhook обработка ===
 @app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    asyncio.run(application.update_queue.put(update))
+async def webhook():
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    await application.process_update(update)
     return "ok"
 
 @app.route("/", methods=["GET"])
 def index():
     return "🤖 Бот работает!"
 
-# === Запуск ===
+# === Запуск Flask + установка Webhook ===
 if __name__ == "__main__":
-    async def setup():
-        await bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
+    import asyncio
+
+    async def run():
+        await application.bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
         print("✅ Webhook установлен!")
 
-    asyncio.run(setup())
+    asyncio.run(run())
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
