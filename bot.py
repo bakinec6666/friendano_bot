@@ -32,6 +32,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if query.data == "get_vip":
+        if not PAYMENT_TOKEN:
+            await query.message.reply_text("⚠️ Платежи пока не настроены.")
+            return
         prices = [LabeledPrice("🔥 VIP доступ", 19900)]
         await query.message.bot.send_invoice(
             chat_id=query.from_user.id,
@@ -88,10 +91,13 @@ def index():
 if __name__ == "__main__":
     import asyncio
 
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     async def run():
-        await application.initialize()  # Обязательно инициализируем
+        await application.initialize()
         await application.bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
         print("✅ Webhook установлен!")
 
-    asyncio.run(run())
+    loop.run_until_complete(run())
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
