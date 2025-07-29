@@ -6,7 +6,7 @@ import asyncio
 
 TOKEN = os.getenv("TOKEN") or "7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc"
 PAYMENT_TOKEN = os.getenv("PAYMENT_TOKEN") or "ТВОЙ_ТОКЕН_ОПЛАТЫ"
-WEBHOOK_URL = os.getenv("WEBHOOK_URL") or "https://ТВОЙ-АДРЕС.onrender.com"
+WEBHOOK_URL = os.getenv("WEBHOOK_URL") or "https://friendano-bot.onrender.com"
 
 app = Flask(__name__)
 bot = Bot(token=TOKEN)
