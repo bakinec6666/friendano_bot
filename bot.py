@@ -95,7 +95,7 @@ if __name__ == "__main__":
     asyncio.set_event_loop(loop)
 
     async def run():
-        await application.initialize()
+        await application.initialize()  # Обязательно инициализируем
         await application.bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
         print("✅ Webhook установлен!")
 
