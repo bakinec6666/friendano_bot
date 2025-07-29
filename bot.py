@@ -8,16 +8,13 @@ from telegram.ext import (
     MessageHandler, ContextTypes, filters
 )
 
-# --- Настройки ---
 TOKEN = os.getenv("TOKEN", "7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc")
 PAYMENT_TOKEN = os.getenv("PAYMENT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-# --- Flask App ---
 app = Flask(__name__)
 VIP_USERS = set()
 
-# === Хендлеры ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "👋 Привет, дорогой!\n\n"
@@ -35,7 +32,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if query.data == "get_vip":
-        prices = [LabeledPrice("🔥 VIP доступ", 19900)]  # 199₽
+        prices = [LabeledPrice("🔥 VIP доступ", 19900)]
         await query.message.bot.send_invoice(
             chat_id=query.from_user.id,
             title="Подписка на интимный контент",
@@ -72,14 +69,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await message.reply_text("❤️ Напиши «фото» — и я пришлю тебе кое-что особенное 😘")
 
-# === Создание Application ===
 application = Application.builder().token(TOKEN).build()
 
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CallbackQueryHandler(button_handler))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# === Webhook обработка ===
 @app.route(f"/{TOKEN}", methods=["POST"])
 async def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
@@ -90,12 +85,11 @@ async def webhook():
 def index():
     return "🤖 Бот работает!"
 
-# === Запуск Flask + установка Webhook ===
 if __name__ == "__main__":
     import asyncio
 
     async def run():
-        await application.initialize()  # Обязательно инициализируем Application
+        await application.initialize()  # Обязательно инициализируем
         await application.bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
         print("✅ Webhook установлен!")
 
