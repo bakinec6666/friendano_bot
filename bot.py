@@ -7,8 +7,8 @@ from telegram.ext import (
 )
 
 # ===================== Настройки =====================
-TOKEN = "TELEGRAM_BOT_TOKEN"      # <- Вставь токен своего бота
-ADMIN_USERNAME = "AdminNick"      # <- Ник Telegram администратора
+TOKEN = "7323003204:AAEuLZHtAmhy0coPk3tMEQamsa9ftuUguGc"      # <- Вставь токен своего бота
+ADMIN_USERNAME = "user666321"      # <- Ник Telegram администратора
 ADMIN_ID = 123456789              # <- Числовой Telegram ID администратора
 
 # ===================== Flask =====================
